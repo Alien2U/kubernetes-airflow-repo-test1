@@ -7,7 +7,7 @@ def hello_airflow(**context):
     logging.getLogger("airflow.task").info("Hello from Airflow 3.0.2")
     return "done"
 
-with DAG("hello_airflow_3",
+with DAG("hello_airflow_3_public",
          start_date=datetime(2024,1,1),
          schedule=None,      # manual trigger for now
          catchup=False,
