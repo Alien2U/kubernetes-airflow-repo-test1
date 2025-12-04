@@ -30,7 +30,7 @@ with DAG(
         conn = hook.get_conn()
         cursor = conn.cursor()
 
-        cursor.execute("SELECT Name FROM \"rke_Account\";")
+        cursor.execute("SELECT \"Name\" FROM \"rke_Account\";")
         rows = cursor.fetchall()
 
         logger = logging.getLogger("airflow.task")
