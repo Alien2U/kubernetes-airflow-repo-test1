@@ -11,7 +11,7 @@ from airflow.providers.postgres.hooks.postgres import PostgresHook
 CONN_ID = "salesforce_demo_db"
 
 with DAG(
-    dag_id="log_rke_Account_names",
+    dag_id="sample_postgres_dag",
     start_date=datetime(2024, 1, 1),
     schedule=None,          # or "@daily", "0 2 * * *", etc.
     catchup=False,
@@ -30,7 +30,7 @@ with DAG(
         conn = hook.get_conn()
         cursor = conn.cursor()
 
-        cursor.execute("SELECT name FROM rke_Account;")
+        cursor.execute("SELECT name FROM \"rke_Account\";")
         rows = cursor.fetchall()
 
         logger = logging.getLogger("airflow.task")
