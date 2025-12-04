@@ -15,7 +15,7 @@ with DAG(
     start_date=datetime(2024, 1, 1),
     schedule=None,          # or "@daily", "0 2 * * *", etc.
     catchup=False,
-    tags=["example", "postgres"],
+    tags=["github", "logging", "postgres"],
 ) as dag:
 
     @task
