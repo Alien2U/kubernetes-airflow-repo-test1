@@ -28,6 +28,38 @@ def test_and_query_salesforce(**context):
         print(f"Instance URL: {instance_url}")
         print(f"Connection ID: {conn.conn_id}")
         
+        # Check if we need to authenticate with username/password first
+        if extra.get('username') and extra.get('password'):
+            print("\n--- Authenticating with Username/Password ---")
+            
+            # Use the correct OAuth token endpoint
+            # Use 'test.salesforce.com' for sandbox, 'login.salesforce.com' for production
+            auth_url = instance_url.rstrip('/') + '/services/oauth2/token'
+            
+            auth_data = {
+                'grant_type': 'password',
+                'client_id': extra.get('client_id'),
+                'client_secret': extra.get('client_secret'),
+                'username': extra.get('username'),
+                'password': extra.get('password')  # Should include security token appended
+            }
+            
+            print(f"Auth URL: {auth_url}")
+            auth_response = requests.post(auth_url, data=auth_data, timeout=30)
+            
+            if auth_response.status_code != 200:
+                print(f"❌ Authentication failed")
+                print(f"Status: {auth_response.status_code}")
+                print(f"Response: {auth_response.text}")
+                auth_response.raise_for_status()
+            
+            auth_result = auth_response.json()
+            access_token = auth_result['access_token']
+            instance_url = auth_result['instance_url']
+            
+            print(f"✅ Authentication successful!")
+            print(f"Instance URL from auth: {instance_url}")
+        
         headers = {
             'Authorization': f'Bearer {access_token}',
             'Content-Type': 'application/json'
@@ -42,7 +74,7 @@ def test_and_query_salesforce(**context):
         response.raise_for_status()
         
         versions = response.json()
-        print(f"Connection successful!")
+        print(f"✅ Connection successful!")
         print(f"Available API versions: {len(versions)}")
         latest_version = versions[-1]['version']
         print(f"Latest version: {latest_version}")
@@ -63,7 +95,7 @@ def test_and_query_salesforce(**context):
         response.raise_for_status()
         results = response.json()
         
-        print(f"Query successful!")
+        print(f"✅ Query successful!")
         print(f"Total records: {results.get('totalSize', 0)}")
         
         # Print account details
@@ -74,28 +106,28 @@ def test_and_query_salesforce(**context):
         context['ti'].xcom_push(key='salesforce_test_status', value='success')
         context['ti'].xcom_push(key='records_retrieved', value=results.get('totalSize', 0))
         
-        return f"All tests passed! Retrieved {results.get('totalSize', 0)} accounts"
+        return f"✅ All tests passed! Retrieved {results.get('totalSize', 0)} accounts"
         
     except requests.exceptions.HTTPError as e:
-        print(f"HTTP Error: {e}")
+        print(f"❌ HTTP Error: {e}")
         print(f"Status Code: {e.response.status_code}")
         print(f"Response: {e.response.text}")
         
         # Provide helpful hints based on status code
         if e.response.status_code == 401:
-            print("\nToken expired or invalid. Try:")
+            print("\n💡 Token expired or invalid. Try:")
             print("   1. Generate a new access token")
             print("   2. Use Connected App with refresh token")
             print("   3. Check if IP restrictions apply")
         elif e.response.status_code == 403:
-            print("\nPermission denied. Check:")
+            print("\n💡 Permission denied. Check:")
             print("   1. User has API access enabled")
             print("   2. User has permission to query Accounts")
         
         raise
         
     except Exception as e:
-        print(f"Unexpected Error: {str(e)}")
+        print(f"❌ Unexpected Error: {str(e)}")
         raise
 
 with DAG(
@@ -105,7 +137,7 @@ with DAG(
     schedule=None,  # Manual trigger only
     start_date=datetime(2024, 1, 1),
     catchup=False,
-    tags=['generic', 'salesforce', 'test', 'connection'],
+    tags=['salesforce', 'test', 'connection'],
 ) as dag:
     
     # Single task: Test connection and query (avoids token expiration between tasks)
