@@ -88,7 +88,7 @@ def query_salesforce_accounts(**context):
     This runs only if the connection test passes.
     """
     try:
-        conn = BaseHook.get_connection('salesforce_generic')
+        conn = BaseHook.get_connection('salesforce_generic_connection')
         instance_url = conn.host
         access_token = conn.password
         
