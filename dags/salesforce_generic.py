@@ -99,7 +99,7 @@ def test_and_query_salesforce(**context):
         raise
 
 with DAG(
-    dag_id='test_salesforce_generic_connection',
+    dag_id='test_salesforce_generic',
     default_args=default_args,
     description='Test Salesforce connection using generic connector',
     schedule=None,  # Manual trigger only
