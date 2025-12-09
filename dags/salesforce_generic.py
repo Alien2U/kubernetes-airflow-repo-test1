@@ -11,124 +11,75 @@ default_args = {
 }
 
 def test_and_query_salesforce(**context):
-    """
-    Test Salesforce connection and query in one task to avoid token expiration.
-    """
-    try:
-        # Get the connection details
-        conn = BaseHook.get_connection('salesforce_generic')
-        
-        # Extract connection details
-        instance_url = conn.host
-        access_token = conn.password
-        
-        # Parse extra fields
-        extra = json.loads(conn.extra) if conn.extra else {}
-        
-        print(f"Instance URL: {instance_url}")
-        print(f"Connection ID: {conn.conn_id}")
-        
-        # Check if we need to authenticate with username/password first
-        if extra.get('username') and extra.get('password'):
-            print("\n--- Authenticating with Username/Password ---")
-            
-            # Use the correct OAuth token endpoint
-            # Use 'test.salesforce.com' for sandbox, 'login.salesforce.com' for production
-            auth_url = instance_url.rstrip('/') + '/services/oauth2/token'
-            
-            auth_data = {
-                'grant_type': 'password',
-                'client_id': extra.get('client_id'),
-                'client_secret': extra.get('client_secret'),
-                'username': extra.get('username'),
-                'password': extra.get('password')  # Should include security token appended
-            }
-            
-            print(f"Auth URL: {auth_url}")
-            auth_response = requests.post(auth_url, data=auth_data, timeout=30)
-            
-            if auth_response.status_code != 200:
-                print(f"❌ Authentication failed")
-                print(f"Status: {auth_response.status_code}")
-                print(f"Response: {auth_response.text}")
-                auth_response.raise_for_status()
-            
-            auth_result = auth_response.json()
-            access_token = auth_result['access_token']
-            instance_url = auth_result['instance_url']
-            
-            print(f"✅ Authentication successful!")
-            print(f"Instance URL from auth: {instance_url}")
-        
-        headers = {
-            'Authorization': f'Bearer {access_token}',
-            'Content-Type': 'application/json'
-        }
-        
-        # Test 1: Get API versions
-        api_url = f"{instance_url}/services/data/"
-        print(f"\n--- Testing Connection ---")
-        print(f"Making request to: {api_url}")
-        
-        response = requests.get(api_url, headers=headers, timeout=30)
-        response.raise_for_status()
-        
-        versions = response.json()
-        print(f"✅ Connection successful!")
-        print(f"Available API versions: {len(versions)}")
-        latest_version = versions[-1]['version']
-        print(f"Latest version: {latest_version}")
-        
-        # Test 2: Query Accounts (same token, same task)
-        print(f"\n--- Querying Salesforce ---")
-        query = "SELECT Id, Name, Industry FROM Account LIMIT 5"
-        query_url = f"{instance_url}/services/data/v{latest_version}/query"
-        
-        print(f"Query: {query}")
-        response = requests.get(
-            query_url,
-            headers=headers,
-            params={'q': query},
-            timeout=30
-        )
-        
-        response.raise_for_status()
-        results = response.json()
-        
-        print(f"✅ Query successful!")
-        print(f"Total records: {results.get('totalSize', 0)}")
-        
-        # Print account details
-        for record in results.get('records', []):
-            print(f"  - Account: {record.get('Name')} | Industry: {record.get('Industry', 'N/A')}")
-        
-        # Push results to XCom
-        context['ti'].xcom_push(key='salesforce_test_status', value='success')
-        context['ti'].xcom_push(key='records_retrieved', value=results.get('totalSize', 0))
-        
-        return f"✅ All tests passed! Retrieved {results.get('totalSize', 0)} accounts"
-        
-    except requests.exceptions.HTTPError as e:
-        print(f"❌ HTTP Error: {e}")
-        print(f"Status Code: {e.response.status_code}")
-        print(f"Response: {e.response.text}")
-        
-        # Provide helpful hints based on status code
-        if e.response.status_code == 401:
-            print("\n💡 Token expired or invalid. Try:")
-            print("   1. Generate a new access token")
-            print("   2. Use Connected App with refresh token")
-            print("   3. Check if IP restrictions apply")
-        elif e.response.status_code == 403:
-            print("\n💡 Permission denied. Check:")
-            print("   1. User has API access enabled")
-            print("   2. User has permission to query Accounts")
-        
-        raise
-        
-    except Exception as e:
-        print(f"❌ Unexpected Error: {str(e)}")
-        raise
+    conn = BaseHook.get_connection('salesforce_generic')
+
+    # Login host: login.salesforce.com or test.salesforce.com
+    login_base = conn.host.rstrip('/')
+
+    extra = json.loads(conn.extra) if conn.extra else {}
+    client_id = extra["client_id"]
+    client_secret = extra["client_secret"]
+    refresh_token = extra["refresh_token"]
+
+    # 1) Get fresh access token via refresh_token flow
+    auth_url = f"{login_base}/services/oauth2/token"
+    auth_data = {
+        "grant_type": "refresh_token",
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "refresh_token": refresh_token,
+    }
+
+    print(f"Auth URL: {auth_url}")
+    auth_response = requests.post(auth_url, data=auth_data, timeout=30)
+
+    if auth_response.status_code != 200:
+        print("❌ Authentication (refresh token) failed")
+        print(f"Status: {auth_response.status_code}")
+        print(f"Response: {auth_response.text}")
+        auth_response.raise_for_status()
+
+    auth_result = auth_response.json()
+    access_token = auth_result["access_token"]
+    instance_url = auth_result["instance_url"]
+
+    print("✅ Got access token via refresh_token flow")
+    print(f"Instance URL: {instance_url}")
+
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json",
+    }
+
+    # 2) Test connection
+    api_url = f"{instance_url}/services/data/"
+    print(f"\n--- Testing Connection ---")
+    print(f"Making request to: {api_url}")
+    response = requests.get(api_url, headers=headers, timeout=30)
+    response.raise_for_status()
+
+    versions = response.json()
+    latest_version = versions[-1]["version"]
+    print(f"✅ Connection successful. Latest API version: {latest_version}")
+
+    # 3) Query example
+    print(f"\n--- Querying Salesforce ---")
+    query = "SELECT Id, Name, Industry FROM Account LIMIT 5"
+    query_url = f"{instance_url}/services/data/v{latest_version}/query"
+    response = requests.get(query_url, headers=headers, params={"q": query}, timeout=30)
+    response.raise_for_status()
+
+    results = response.json()
+    print(f"✅ Query successful! Total records: {results.get('totalSize', 0)}")
+
+    for record in results.get("records", []):
+        print(f"  - Account: {record.get('Name')} | Industry: {record.get('Industry', 'N/A')}")
+
+    context["ti"].xcom_push(key="salesforce_test_status", value="success")
+    context["ti"].xcom_push(key="records_retrieved", value=results.get("totalSize", 0))
+
+    return f"✅ All tests passed! Retrieved {results.get('totalSize', 0)} accounts"
+
 
 with DAG(
     dag_id='test_salesforce_generic',
